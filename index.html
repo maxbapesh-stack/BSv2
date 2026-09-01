@@ -231,10 +231,7 @@
 
   <!-- ===== BALANCES ===== -->
   <div class="section" id="section-balances">
-    <div class="sectionHeader">
-      <div class="hint" style="margin:0">Your wallets</div>
-      <button class="addBtn" id="btnOpenAdjust">+</button>
-    </div>
+    <div class="hint">Your wallets</div>
     <div id="balancesList"><div class="hint">Loading...</div></div>
   </div>
 
@@ -279,28 +276,6 @@
     <div class="actions">
       <button class="btn-cancel" id="btnCancel">Edit</button>
       <button class="btn-confirm" id="btnConfirm">Submit</button>
-    </div>
-  </div>
-</div>
-
-<div class="overlay" id="adjustOverlay">
-  <div class="modal">
-    <h3>Balance adjustment</h3>
-    <div class="field">
-      <label>Wallet</label>
-      <select id="adjust-wallet"></select>
-    </div>
-    <div class="field">
-      <label>Amount (+ top-up, − deduction)</label>
-      <input type="text" inputmode="decimal" id="adjust-amount" placeholder="e.g. 500 or -200">
-    </div>
-    <div class="field">
-      <label>Comment (optional)</label>
-      <input type="text" id="adjust-comment" placeholder="e.g. opening balance">
-    </div>
-    <div class="actions">
-      <button class="btn-cancel" id="adjustCancel">Cancel</button>
-      <button class="btn-confirm" id="adjustSave">Save</button>
     </div>
   </div>
 </div>
@@ -353,7 +328,7 @@ function fillSelect(id, values, keepValue) {
 }
 
 function refreshDropdowns() {
-  ['trade-from', 'trade-to', 'expense-from', 'loan-from', 'repayment-to', 'adjust-wallet'].forEach(function (id) {
+  ['trade-from', 'trade-to', 'expense-from', 'loan-from', 'repayment-to'].forEach(function (id) {
     fillSelect(id, refData.wallets);
   });
   fillSelect('expense-purpose', refData.purposes);
@@ -432,6 +407,10 @@ function fmt(n) {
   if (isNaN(n) || n === null || n === undefined) return '—';
   return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+function fmtRate(n) {
+  if (isNaN(n) || n === null || n === undefined) return '—';
+  return Number(n).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+}
 var lastCalc = {};
 function recalcTrade() {
   var sumFrom = parseLocal(document.getElementById('trade-sumfrom').value);
@@ -447,7 +426,7 @@ function recalcTrade() {
   if (tradeMethod === 'rate') { rate = value; fee = sumFrom * rate - sumFrom; }
   else { fee = value; rate = (sumFrom + fee) / sumFrom; }
   sumTo = sumFrom + fee;
-  document.getElementById('calc-rate').textContent = fmt(rate);
+  document.getElementById('calc-rate').textContent = fmtRate(rate);
   document.getElementById('calc-fee').textContent = fmt(fee);
   document.getElementById('calc-sumto').textContent = fmt(sumTo);
   lastCalc = { rate: rate, fee: fee, sumTo: sumTo };
@@ -545,41 +524,13 @@ function loadBalances() {
   var out = document.getElementById('balancesList');
   out.innerHTML = '<div class="hint">Loading...</div>';
   callApi('getWalletBalances').then(function (rows) {
-    if (!rows.length) { out.innerHTML = '<div class="hint">No wallets yet — add one with "+"</div>'; return; }
+    if (!rows.length) { out.innerHTML = '<div class="hint">No wallets yet — add one in the Wallets sheet</div>'; return; }
     out.innerHTML = rows.map(function (r) {
       var neg = r.balance < 0 ? ' neg' : '';
       return '<div class="balanceCard"><div class="name">' + r.wallet + '</div><div class="amount' + neg + '">' + fmt(r.balance) + '</div></div>';
     }).join('');
   }).catch(function (err) { out.innerHTML = 'Error: ' + err.message; });
 }
-
-document.getElementById('btnOpenAdjust').addEventListener('click', function () {
-  fillSelect('adjust-wallet', refData.wallets);
-  document.getElementById('adjust-amount').value = '';
-  document.getElementById('adjust-comment').value = '';
-  document.getElementById('adjustOverlay').classList.add('show');
-});
-document.getElementById('adjustCancel').addEventListener('click', function () {
-  document.getElementById('adjustOverlay').classList.remove('show');
-});
-document.getElementById('adjustSave').addEventListener('click', function () {
-  var wallet = document.getElementById('adjust-wallet').value;
-  var amount = document.getElementById('adjust-amount').value;
-  var comment = document.getElementById('adjust-comment').value;
-  if (!wallet) { alert('No wallets yet — add one first from any form using "+"'); return; }
-  if (!amount) { alert('Please fill in the amount'); return; }
-  var btn = document.getElementById('adjustSave');
-  btn.disabled = true; btn.textContent = 'Saving...';
-  callApi('submitAdjustment', { wallet: wallet, amount: amount, comment: comment }).then(function () {
-    btn.disabled = false; btn.textContent = 'Save';
-    document.getElementById('adjustOverlay').classList.remove('show');
-    showToast('Balance adjusted ✓');
-    loadBalances();
-  }).catch(function (err) {
-    btn.disabled = false; btn.textContent = 'Save';
-    alert('Error: ' + err.message);
-  });
-});
 
 /* ---------- History (all operations) ---------- */
 var typeLabels = { TRADE: 'Trade', EXPENSE: 'Expense', LOAN: 'Loan', REPAYMENT: 'Repay' };

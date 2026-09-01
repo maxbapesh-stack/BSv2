@@ -675,6 +675,15 @@ function renderHistory(rows) {
 }
 
 /* ---------- startup: access check ---------- */
+callApi('ping').then(function (pingInfo) {
+  document.getElementById('lockedScreen').style.display = 'none';
+  var pingLabel = document.createElement('div');
+  pingLabel.id = 'pingLabel';
+  pingLabel.style.cssText = 'position:fixed;bottom:4px;left:4px;font-size:9px;color:#ccc;z-index:200';
+  pingLabel.textContent = 'backend: ' + pingInfo.version;
+  document.body.appendChild(pingLabel);
+}).catch(function () {});
+
 callApi('identifyOperator').then(function (op) {
   if (!op) {
     document.getElementById('lockedScreen').style.display = 'block';

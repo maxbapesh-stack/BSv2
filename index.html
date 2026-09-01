@@ -131,17 +131,11 @@
   <div class="section" id="section-trade">
     <div class="field">
       <label>From</label>
-      <div class="row">
-        <select id="trade-from"></select>
-        <button class="addBtn" data-add="wallet" data-target="trade-from">+</button>
-      </div>
+      <select id="trade-from"></select>
     </div>
     <div class="field">
       <label>To</label>
-      <div class="row">
-        <select id="trade-to"></select>
-        <button class="addBtn" data-add="wallet" data-target="trade-to">+</button>
-      </div>
+      <select id="trade-to"></select>
     </div>
     <div class="field">
       <label>Sum from (deducted)</label>
@@ -170,10 +164,7 @@
   <div class="section" id="section-expense">
     <div class="field">
       <label>From</label>
-      <div class="row">
-        <select id="expense-from"></select>
-        <button class="addBtn" data-add="wallet" data-target="expense-from">+</button>
-      </div>
+      <select id="expense-from"></select>
     </div>
     <div class="field">
       <label>Purpose</label>
@@ -203,10 +194,7 @@
     </div>
     <div class="field">
       <label>From</label>
-      <div class="row">
-        <select id="loan-from"></select>
-        <button class="addBtn" data-add="wallet" data-target="loan-from">+</button>
-      </div>
+      <select id="loan-from"></select>
     </div>
     <div class="field">
       <label>Sum</label>
@@ -229,10 +217,7 @@
     </div>
     <div class="field">
       <label>To</label>
-      <div class="row">
-        <select id="repayment-to"></select>
-        <button class="addBtn" data-add="wallet" data-target="repayment-to">+</button>
-      </div>
+      <select id="repayment-to"></select>
     </div>
     <div class="field">
       <label>Sum</label>
@@ -411,9 +396,8 @@ document.querySelectorAll('.addBtn[data-add]').forEach(function (btn) {
     var target = btn.dataset.target;
     var name = prompt('New value:');
     if (!name || !name.trim()) return;
-    var fnMap = { wallet: 'addWallet', purpose: 'addPurpose', client: 'addClient' };
+    var fnMap = { purpose: 'addPurpose', client: 'addClient' };
     callApi(fnMap[kind], { name: name.trim() }).then(function (list) {
-      if (kind === 'wallet') refData.wallets = list;
       if (kind === 'purpose') refData.purposes = list;
       if (kind === 'client') refData.clients = list;
       refreshDropdowns();
@@ -675,25 +659,9 @@ function renderHistory(rows) {
 }
 
 /* ---------- startup: access check ---------- */
-callApi('ping').then(function (pingInfo) {
-  document.getElementById('lockedScreen').style.display = 'none';
-  var pingLabel = document.createElement('div');
-  pingLabel.id = 'pingLabel';
-  pingLabel.style.cssText = 'position:fixed;bottom:4px;left:4px;font-size:9px;color:#ccc;z-index:200';
-  pingLabel.textContent = 'backend: ' + pingInfo.version;
-  document.body.appendChild(pingLabel);
-}).catch(function () {});
-
 callApi('identifyOperator').then(function (op) {
   if (!op) {
     document.getElementById('lockedScreen').style.display = 'block';
-    callApi('debugAuth').then(function (info) {
-      document.getElementById('lockedScreen').innerHTML +=
-        '<pre style="font-size:11px;text-align:left;margin-top:16px;white-space:pre-wrap">' + JSON.stringify(info, null, 2) + '</pre>';
-    }).catch(function (err) {
-      document.getElementById('lockedScreen').innerHTML +=
-        '<pre style="font-size:11px;text-align:left;margin-top:16px;color:red">debugAuth error: ' + err.message + '</pre>';
-    });
     return;
   }
   operatorName = op.name;
@@ -701,10 +669,8 @@ callApi('identifyOperator').then(function (op) {
   document.getElementById('app').style.display = 'block';
   document.getElementById('submitBar').style.display = 'block';
   loadRefData();
-}).catch(function (err) {
+}).catch(function () {
   document.getElementById('lockedScreen').style.display = 'block';
-  document.getElementById('lockedScreen').innerHTML +=
-    '<pre style="font-size:11px;text-align:left;margin-top:16px;color:red">identifyOperator threw: ' + err.message + '</pre>';
 });
 </script>
 </body>

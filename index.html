@@ -155,6 +155,10 @@
       <div class="big"><span>Sum to (credited)</span><span id="calc-sumto">—</span></div>
     </div>
     <div class="field">
+      <label>Fee wallet (defaults to To)</label>
+      <select id="trade-feewallet"></select>
+    </div>
+    <div class="field">
       <label>Comment (optional)</label>
       <input type="text" id="trade-comment">
     </div>
@@ -328,7 +332,7 @@ function fillSelect(id, values, keepValue) {
 }
 
 function refreshDropdowns() {
-  ['trade-from', 'trade-to', 'expense-from', 'loan-from', 'repayment-to'].forEach(function (id) {
+  ['trade-from', 'trade-to', 'trade-feewallet', 'expense-from', 'loan-from', 'repayment-to'].forEach(function (id) {
     fillSelect(id, refData.wallets);
   });
   fillSelect('expense-purpose', refData.purposes);
@@ -396,6 +400,17 @@ document.querySelectorAll('#section-trade .segmented div').forEach(function (el)
 document.getElementById('trade-sumfrom').addEventListener('input', recalcTrade);
 document.getElementById('trade-value').addEventListener('input', recalcTrade);
 
+/* Fee wallet defaults to whatever "To" is set to, until the user picks a different one manually. */
+var feeWalletTouched = false;
+document.getElementById('trade-to').addEventListener('change', function () {
+  if (!feeWalletTouched) {
+    document.getElementById('trade-feewallet').value = document.getElementById('trade-to').value;
+  }
+});
+document.getElementById('trade-feewallet').addEventListener('change', function () {
+  feeWalletTouched = true;
+});
+
 function parseLocal(s) {
   s = String(s || '').trim().replace(/\s/g, '');
   if (!s) return NaN;
@@ -439,7 +454,8 @@ function collectPayload() {
     return {
       type: 'trade',
       from: val('trade-from'), to: val('trade-to'), sumFrom: val('trade-sumfrom'),
-      method: tradeMethod, value: val('trade-value'), comment: val('trade-comment')
+      method: tradeMethod, value: val('trade-value'), feeWallet: val('trade-feewallet'),
+      comment: val('trade-comment')
     };
   }
   if (currentTab === 'expense') {
@@ -467,7 +483,7 @@ function collectPayload() {
 
 var fieldLabels = {
   from: 'From', to: 'To', sum: 'Sum', sumFrom: 'Sum from', purpose: 'Purpose', client: 'Client',
-  method: 'Method', value: 'Value', comment: 'Comment'
+  method: 'Method', value: 'Value', feeWallet: 'Fee wallet', comment: 'Comment'
 };
 
 document.getElementById('btnSubmit').addEventListener('click', function () {
@@ -516,7 +532,11 @@ document.getElementById('btnConfirm').addEventListener('click', function () {
 
 function resetForm(type) {
   document.querySelectorAll('#section-' + type + ' input[type=text]').forEach(function (i) { i.value = ''; });
-  if (type === 'trade') recalcTrade();
+  if (type === 'trade') {
+    feeWalletTouched = false;
+    document.getElementById('trade-feewallet').value = document.getElementById('trade-to').value;
+    recalcTrade();
+  }
 }
 
 /* ---------- Balances ---------- */

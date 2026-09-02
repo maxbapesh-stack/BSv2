@@ -130,15 +130,15 @@
   <!-- ===== TRADE ===== -->
   <div class="section" id="section-trade">
     <div class="field">
-      <label>From</label>
+      <label>Outgoing</label>
       <select id="trade-from"></select>
     </div>
     <div class="field">
-      <label>To</label>
+      <label>Incoming</label>
       <select id="trade-to"></select>
     </div>
     <div class="field">
-      <label>Sum from (deducted)</label>
+      <label>Outgoing amount</label>
       <input type="text" inputmode="decimal" id="trade-sumfrom" placeholder="1234.56">
     </div>
     <div class="field">
@@ -149,14 +149,13 @@
       </div>
       <input type="text" inputmode="decimal" id="trade-value" placeholder="e.g. 1.01">
     </div>
+    <div class="field">
+      <label>Fee wallet</label>
+      <select id="trade-feewallet"></select>
+    </div>
     <div class="calc-preview">
       <div><span>Rate</span><span id="calc-rate">—</span></div>
-      <div><span>Fee (Profit)</span><span id="calc-fee">—</span></div>
-      <div class="big"><span>Sum to (credited)</span><span id="calc-sumto">—</span></div>
-    </div>
-    <div class="field">
-      <label>Fee wallet (defaults to To)</label>
-      <select id="trade-feewallet"></select>
+      <div><span>Fee</span><span id="calc-fee">—</span></div>
     </div>
     <div class="field">
       <label>Comment (optional)</label>
@@ -172,10 +171,7 @@
     </div>
     <div class="field">
       <label>Purpose</label>
-      <div class="row">
-        <select id="expense-purpose"></select>
-        <button class="addBtn" data-add="purpose" data-target="expense-purpose">+</button>
-      </div>
+      <select id="expense-purpose"></select>
     </div>
     <div class="field">
       <label>Sum</label>
@@ -375,9 +371,8 @@ document.querySelectorAll('.addBtn[data-add]').forEach(function (btn) {
     var target = btn.dataset.target;
     var name = prompt('New value:');
     if (!name || !name.trim()) return;
-    var fnMap = { purpose: 'addPurpose', client: 'addClient' };
+    var fnMap = { client: 'addClient' };
     callApi(fnMap[kind], { name: name.trim() }).then(function (list) {
-      if (kind === 'purpose') refData.purposes = list;
       if (kind === 'client') refData.clients = list;
       refreshDropdowns();
       if (target) document.getElementById(target).value = name.trim();
@@ -422,6 +417,13 @@ function fmt(n) {
   if (isNaN(n) || n === null || n === undefined) return '—';
   return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+function fmtDate(d) {
+  var dt = new Date(d);
+  var dd = String(dt.getDate()).padStart(2, '0');
+  var mm = String(dt.getMonth() + 1).padStart(2, '0');
+  var yy = String(dt.getFullYear()).slice(-2);
+  return dd + '.' + mm + '.' + yy;
+}
 function fmtRate(n) {
   if (isNaN(n) || n === null || n === undefined) return '—';
   return Number(n).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
@@ -430,21 +432,18 @@ var lastCalc = {};
 function recalcTrade() {
   var sumFrom = parseLocal(document.getElementById('trade-sumfrom').value);
   var value = parseLocal(document.getElementById('trade-value').value);
-  var rate, fee, sumTo;
+  var rate, fee;
   if (isNaN(sumFrom) || isNaN(value) || sumFrom === 0) {
     document.getElementById('calc-rate').textContent = '—';
     document.getElementById('calc-fee').textContent = '—';
-    document.getElementById('calc-sumto').textContent = '—';
     lastCalc = {};
     return;
   }
   if (tradeMethod === 'rate') { rate = value; fee = sumFrom * rate - sumFrom; }
   else { fee = value; rate = (sumFrom + fee) / sumFrom; }
-  sumTo = sumFrom + fee;
   document.getElementById('calc-rate').textContent = fmtRate(rate);
   document.getElementById('calc-fee').textContent = fmt(fee);
-  document.getElementById('calc-sumto').textContent = fmt(sumTo);
-  lastCalc = { rate: rate, fee: fee, sumTo: sumTo };
+  lastCalc = { rate: rate, fee: fee };
 }
 
 function val(id) { return document.getElementById(id).value; }
@@ -453,7 +452,7 @@ function collectPayload() {
   if (currentTab === 'trade') {
     return {
       type: 'trade',
-      from: val('trade-from'), to: val('trade-to'), sumFrom: val('trade-sumfrom'),
+      outgoing: val('trade-from'), incoming: val('trade-to'), outgoingAmount: val('trade-sumfrom'),
       method: tradeMethod, value: val('trade-value'), feeWallet: val('trade-feewallet'),
       comment: val('trade-comment')
     };
@@ -482,14 +481,15 @@ function collectPayload() {
 }
 
 var fieldLabels = {
-  from: 'From', to: 'To', sum: 'Sum', sumFrom: 'Sum from', purpose: 'Purpose', client: 'Client',
+  from: 'From', to: 'To', sum: 'Sum', outgoing: 'Outgoing', incoming: 'Incoming',
+  outgoingAmount: 'Outgoing amount', purpose: 'Purpose', client: 'Client',
   method: 'Method', value: 'Value', feeWallet: 'Fee wallet', comment: 'Comment'
 };
 
 document.getElementById('btnSubmit').addEventListener('click', function () {
   var payload = collectPayload();
-  var mainSum = payload.sum || payload.sumFrom;
-  if (!mainSum) { alert('Please fill in the Sum'); return; }
+  var mainSum = payload.sum || payload.outgoingAmount;
+  if (!mainSum) { alert('Please fill in the amount'); return; }
   var modal = document.getElementById('modalLines');
   modal.innerHTML = '';
   Object.keys(payload).forEach(function (k) {
@@ -499,10 +499,10 @@ document.getElementById('btnSubmit').addEventListener('click', function () {
     line.innerHTML = '<span>' + (fieldLabels[k] || k) + '</span><span>' + payload[k] + '</span>';
     modal.appendChild(line);
   });
-  if (payload.type === 'trade' && lastCalc.sumTo !== undefined) {
+  if (payload.type === 'trade' && lastCalc.fee !== undefined) {
     var line = document.createElement('div');
     line.className = 'line';
-    line.innerHTML = '<span>Sum to (calculated)</span><span>' + fmt(lastCalc.sumTo) + '</span>';
+    line.innerHTML = '<span>Fee (calculated)</span><span>' + fmt(lastCalc.fee) + '</span>';
     modal.appendChild(line);
   }
   document.getElementById('overlay').classList.add('show');
@@ -561,8 +561,7 @@ function loadHistory() {
     if (!rows.length) { out.innerHTML = '<div class="hint">No operations yet</div>'; return; }
     var html = '<table><tr><th>Date</th><th>Type</th><th>Operator</th><th>Details</th><th>Sum</th></tr>';
     rows.forEach(function (r) {
-      var d = new Date(r.Timestamp);
-      html += '<tr><td>' + d.toLocaleDateString('en-US') + '</td>' +
+      html += '<tr><td>' + fmtDate(r.Timestamp) + '</td>' +
         '<td><span class="typeBadge">' + (typeLabels[r.Type] || r.Type) + '</span></td>' +
         '<td>' + r.Operator + '</td>' +
         '<td>' + r.Details + (r.Extra ? '<br><span class="hint">' + r.Extra + '</span>' : '') + (r.Comment ? '<br><span class="hint">' + r.Comment + '</span>' : '') + '</td>' +
@@ -622,8 +621,7 @@ function renderHistory(rows) {
   if (!rows.length) { out.innerHTML = '<div class="hint">No data</div>'; return; }
   var html = '<table><tr><th>Date</th><th>Client</th><th>Type</th><th>Operator</th><th>Sum</th></tr>';
   rows.forEach(function (r) {
-    var d = new Date(r.Timestamp);
-    html += '<tr><td>' + d.toLocaleDateString('en-US') + '</td><td>' + r.Client + '</td><td>' + r.type + '</td><td>' + r.Operator + '</td><td>' + fmt(Number(r.Sum)) + '</td></tr>';
+    html += '<tr><td>' + fmtDate(r.Timestamp) + '</td><td>' + r.Client + '</td><td>' + r.type + '</td><td>' + r.Operator + '</td><td>' + fmt(Number(r.Sum)) + '</td></tr>';
   });
   html += '</table>';
   out.innerHTML = html;

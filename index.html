@@ -103,8 +103,18 @@
   .sectionHeader { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
   .typeBadge {
     display: inline-block; padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 700;
-    background: var(--secondary-bg);
+    background: var(--secondary-bg); color: #333;
   }
+  .typeBadge.tb-expense { background: #fff4cc; color: #8a6d00; }
+  .typeBadge.tb-loan { background: #fde0de; color: #b3261e; }
+  .typeBadge.tb-repayment { background: #ddf5e2; color: #1e7e34; }
+  .typeBadge.tb-trade { background: #dbe9fb; color: #1a56b0; }
+  .filterBar { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+  .filterBar select, .filterBar input[type=text], .filterBar input[type=date] {
+    padding: 10px 12px; min-height: 42px; font-size: 14px;
+  }
+  .filterRow { display: flex; gap: 8px; }
+  .filterRow > * { flex: 1; min-width: 0; }
 </style>
 </head>
 <body>
@@ -188,7 +198,7 @@
     <div class="field">
       <label>Client</label>
       <div class="row">
-        <select id="loan-client"></select>
+        <input type="text" id="loan-client" list="clients-datalist" placeholder="Type to search...">
         <button class="addBtn" data-add="client" data-target="loan-client">+</button>
       </div>
     </div>
@@ -211,7 +221,7 @@
     <div class="field">
       <label>Client</label>
       <div class="row">
-        <select id="repayment-client"></select>
+        <input type="text" id="repayment-client" list="clients-datalist" placeholder="Type to search...">
         <button class="addBtn" data-add="client" data-target="repayment-client">+</button>
       </div>
     </div>
@@ -237,6 +247,22 @@
 
   <!-- ===== HISTORY (all operations) ===== -->
   <div class="section" id="section-history">
+    <div class="filterBar">
+      <input type="text" id="history-search" placeholder="Search details / comment...">
+      <div class="filterRow">
+        <select id="history-filter-type">
+          <option value="">All types</option>
+          <option value="TRADE">Trade</option>
+          <option value="EXPENSE">Expense</option>
+          <option value="LOAN">Loan</option>
+          <option value="REPAYMENT">Repayment</option>
+        </select>
+        <select id="history-filter-operator">
+          <option value="">All operators</option>
+        </select>
+      </div>
+      <input type="date" id="history-filter-date">
+    </div>
     <div id="historyOutput"><div class="hint">Loading...</div></div>
   </div>
 
@@ -258,12 +284,14 @@
     </div>
     <div class="field" id="clients-select-wrap">
       <label>Client</label>
-      <select id="clients-select"></select>
+      <input type="text" id="clients-select" list="clients-datalist" placeholder="Type to search...">
     </div>
     <button class="primary" id="btnRunReport" style="margin-bottom:16px;">Show</button>
     <div id="reportOutput"></div>
   </div>
 </div>
+
+<datalist id="clients-datalist"></datalist>
 
 <div class="submitBar" id="submitBar" style="display:none">
   <button class="primary" id="btnSubmit">Review & submit</button>
@@ -315,26 +343,40 @@ function showToast(msg) {
   setTimeout(function () { t.classList.remove('show'); }, 2200);
 }
 
-function fillSelect(id, values, keepValue) {
+function fillSelect(id, values, keepValue, withPlaceholder) {
   var sel = document.getElementById(id);
   var prev = keepValue || sel.value;
   sel.innerHTML = '';
+  if (withPlaceholder) {
+    var ph = document.createElement('option');
+    ph.value = ''; ph.textContent = '— Select —';
+    sel.appendChild(ph);
+  }
   values.forEach(function (v) {
     var opt = document.createElement('option');
     opt.value = v; opt.textContent = v;
     sel.appendChild(opt);
   });
   if (prev && values.indexOf(prev) !== -1) sel.value = prev;
+  else if (withPlaceholder) sel.value = '';
+}
+
+function fillDatalist(id, values) {
+  var dl = document.getElementById(id);
+  dl.innerHTML = '';
+  values.forEach(function (v) {
+    var opt = document.createElement('option');
+    opt.value = v;
+    dl.appendChild(opt);
+  });
 }
 
 function refreshDropdowns() {
   ['trade-from', 'trade-to', 'trade-feewallet', 'expense-from', 'loan-from', 'repayment-to'].forEach(function (id) {
-    fillSelect(id, refData.wallets);
+    fillSelect(id, refData.wallets, null, true);
   });
   fillSelect('expense-purpose', refData.purposes);
-  ['loan-client', 'repayment-client', 'clients-select'].forEach(function (id) {
-    fillSelect(id, refData.clients);
-  });
+  fillDatalist('clients-datalist', refData.clients);
 }
 
 function loadRefData() {
@@ -486,10 +528,33 @@ var fieldLabels = {
   method: 'Method', value: 'Value', feeWallet: 'Fee wallet', comment: 'Comment'
 };
 
+var requiredFields = {
+  trade: ['outgoing', 'incoming', 'outgoingAmount', 'value', 'feeWallet'],
+  expense: ['from', 'purpose', 'sum'],
+  loan: ['client', 'from', 'sum'],
+  repayment: ['client', 'to', 'sum']
+};
+
 document.getElementById('btnSubmit').addEventListener('click', function () {
   var payload = collectPayload();
-  var mainSum = payload.sum || payload.outgoingAmount;
-  if (!mainSum) { alert('Please fill in the amount'); return; }
+  var missing = (requiredFields[payload.type] || []).filter(function (k) { return !payload[k]; });
+  if (missing.length) {
+    alert('Please fill in: ' + missing.map(function (k) { return fieldLabels[k] || k; }).join(', '));
+    return;
+  }
+  if ((payload.type === 'loan' || payload.type === 'repayment') && refData.clients.indexOf(payload.client) === -1) {
+    if (!confirm('"' + payload.client + '" is not in your client list yet. Add them as a new client and continue?')) return;
+    callApi('addClient', { name: payload.client }).then(function (list) {
+      refData.clients = list;
+      fillDatalist('clients-datalist', list);
+      openConfirmModal(payload);
+    }).catch(function (err) { alert('Error: ' + err.message); });
+    return;
+  }
+  openConfirmModal(payload);
+});
+
+function openConfirmModal(payload) {
   var modal = document.getElementById('modalLines');
   modal.innerHTML = '';
   Object.keys(payload).forEach(function (k) {
@@ -507,7 +572,7 @@ document.getElementById('btnSubmit').addEventListener('click', function () {
   }
   document.getElementById('overlay').classList.add('show');
   document.getElementById('overlay').dataset.payload = JSON.stringify(payload);
-});
+}
 
 document.getElementById('btnCancel').addEventListener('click', function () {
   document.getElementById('overlay').classList.remove('show');
@@ -532,9 +597,12 @@ document.getElementById('btnConfirm').addEventListener('click', function () {
 
 function resetForm(type) {
   document.querySelectorAll('#section-' + type + ' input[type=text]').forEach(function (i) { i.value = ''; });
+  document.querySelectorAll('#section-' + type + ' select').forEach(function (s) {
+    if (s.id === 'expense-purpose') return;
+    s.value = '';
+  });
   if (type === 'trade') {
     feeWalletTouched = false;
-    document.getElementById('trade-feewallet').value = document.getElementById('trade-to').value;
     recalcTrade();
   }
 }
@@ -554,23 +622,63 @@ function loadBalances() {
 
 /* ---------- History (all operations) ---------- */
 var typeLabels = { TRADE: 'Trade', EXPENSE: 'Expense', LOAN: 'Loan', REPAYMENT: 'Repay' };
+var typeBadgeClass = { TRADE: 'tb-trade', EXPENSE: 'tb-expense', LOAN: 'tb-loan', REPAYMENT: 'tb-repayment' };
+var allOperations = [];
+
 function loadHistory() {
   var out = document.getElementById('historyOutput');
   out.innerHTML = '<div class="hint">Loading...</div>';
   callApi('getAllOperations').then(function (rows) {
-    if (!rows.length) { out.innerHTML = '<div class="hint">No operations yet</div>'; return; }
-    var html = '<table><tr><th>Date</th><th>Type</th><th>Operator</th><th>Details</th><th>Sum</th></tr>';
-    rows.forEach(function (r) {
-      html += '<tr><td>' + fmtDate(r.Timestamp) + '</td>' +
-        '<td><span class="typeBadge">' + (typeLabels[r.Type] || r.Type) + '</span></td>' +
-        '<td>' + r.Operator + '</td>' +
-        '<td>' + r.Details + (r.Extra ? '<br><span class="hint">' + r.Extra + '</span>' : '') + (r.Comment ? '<br><span class="hint">' + r.Comment + '</span>' : '') + '</td>' +
-        '<td>' + fmt(Number(r.Sum)) + '</td></tr>';
-    });
-    html += '</table>';
-    out.innerHTML = html;
+    allOperations = rows;
+    var operators = Array.from(new Set(rows.map(function (r) { return r.Operator; }))).filter(Boolean);
+    var opSel = document.getElementById('history-filter-operator');
+    var prevOp = opSel.value;
+    opSel.innerHTML = '<option value="">All operators</option>' +
+      operators.map(function (o) { return '<option value="' + o + '">' + o + '</option>'; }).join('');
+    if (operators.indexOf(prevOp) !== -1) opSel.value = prevOp;
+    renderHistoryTable();
   }).catch(function (err) { out.innerHTML = 'Error: ' + err.message; });
 }
+
+function renderHistoryTable() {
+  var out = document.getElementById('historyOutput');
+  var typeFilter = document.getElementById('history-filter-type').value;
+  var opFilter = document.getElementById('history-filter-operator').value;
+  var dateFilter = document.getElementById('history-filter-date').value;
+  var search = document.getElementById('history-search').value.trim().toLowerCase();
+
+  var rows = allOperations.filter(function (r) {
+    if (typeFilter && r.Type !== typeFilter) return false;
+    if (opFilter && r.Operator !== opFilter) return false;
+    if (dateFilter) {
+      var d = new Date(r.Timestamp);
+      var iso = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      if (iso !== dateFilter) return false;
+    }
+    if (search) {
+      var haystack = (r.Details + ' ' + (r.Comment || '') + ' ' + r.Operator).toLowerCase();
+      if (haystack.indexOf(search) === -1) return false;
+    }
+    return true;
+  });
+
+  if (!rows.length) { out.innerHTML = '<div class="hint">No operations match these filters</div>'; return; }
+  var html = '<table><tr><th>Date</th><th>Type</th><th>Operator</th><th>Details</th><th>Sum</th></tr>';
+  rows.forEach(function (r) {
+    html += '<tr><td>' + fmtDate(r.Timestamp) + '</td>' +
+      '<td><span class="typeBadge ' + (typeBadgeClass[r.Type] || '') + '">' + (typeLabels[r.Type] || r.Type) + '</span></td>' +
+      '<td>' + r.Operator + '</td>' +
+      '<td>' + r.Details + (r.Extra ? '<br><span class="hint">' + r.Extra + '</span>' : '') + (r.Comment ? '<br><span class="hint">' + r.Comment + '</span>' : '') + '</td>' +
+      '<td>' + fmt(Number(r.Sum)) + '</td></tr>';
+  });
+  html += '</table>';
+  out.innerHTML = html;
+}
+
+['history-filter-type', 'history-filter-operator', 'history-filter-date'].forEach(function (id) {
+  document.getElementById(id).addEventListener('change', renderHistoryTable);
+});
+document.getElementById('history-search').addEventListener('input', renderHistoryTable);
 
 /* ---------- Clients reports ---------- */
 document.querySelectorAll('#clients-report-scope div').forEach(function (el) {

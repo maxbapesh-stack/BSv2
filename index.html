@@ -109,6 +109,7 @@
   .typeBadge.tb-loan { background: #fde0de; color: #b3261e; }
   .typeBadge.tb-repayment { background: #ddf5e2; color: #1e7e34; }
   .typeBadge.tb-trade { background: #dbe9fb; color: #1a56b0; }
+  .typeBadge.tb-transfer { background: #ece0fa; color: #6a1cb5; }
   .filterBar { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
   .filterBar select, .filterBar input[type=text], .filterBar input[type=date] {
     padding: 10px 12px; min-height: 42px; font-size: 14px;
@@ -132,6 +133,7 @@
     <div class="tab" data-tab="expense">Expense</div>
     <div class="tab" data-tab="loan">Loan</div>
     <div class="tab" data-tab="repayment">Repayment</div>
+    <div class="tab" data-tab="transfer">Transfer</div>
     <div class="tab" data-tab="balances">Balances</div>
     <div class="tab" data-tab="history">History</div>
     <div class="tab" data-tab="clients">Clients</div>
@@ -239,6 +241,26 @@
     </div>
   </div>
 
+  <!-- ===== TRANSFER ===== -->
+  <div class="section" id="section-transfer">
+    <div class="field">
+      <label>From (your wallet)</label>
+      <select id="transfer-from"></select>
+    </div>
+    <div class="field">
+      <label>To (recipient's wallet)</label>
+      <select id="transfer-to"></select>
+    </div>
+    <div class="field">
+      <label>Amount</label>
+      <input type="text" inputmode="decimal" id="transfer-amount" placeholder="1234.56">
+    </div>
+    <div class="field">
+      <label>Comment (optional)</label>
+      <input type="text" id="transfer-comment">
+    </div>
+  </div>
+
   <!-- ===== BALANCES ===== -->
   <div class="section" id="section-balances">
     <div class="hint">Your wallets</div>
@@ -256,6 +278,7 @@
           <option value="EXPENSE">Expense</option>
           <option value="LOAN">Loan</option>
           <option value="REPAYMENT">Repayment</option>
+          <option value="TRANSFER">Transfer</option>
         </select>
         <select id="history-filter-operator">
           <option value="">All operators</option>
@@ -312,14 +335,14 @@
 
 <script>
 /* !!! PASTE YOUR APPS SCRIPT WEB APP URL HERE (ends with /exec) !!! */
-var APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzlE7dSzp5GnwSaoXL7_ojB57_STeuRVT9Ya1mUZrF8k07pdOXjNxmi2uUZDYlblqg/exec';
+var APPS_SCRIPT_URL = 'PASTE_YOUR_APPS_SCRIPT_/exec_URL_HERE';
 
 var tg = window.Telegram && window.Telegram.WebApp;
 if (tg) { tg.ready(); tg.expand(); }
 var initData = tg ? tg.initData : '';
 
 var currentTab = 'trade';
-var refData = { wallets: [], purposes: [], clients: [] };
+var refData = { wallets: [], purposes: [], clients: [], otherWallets: [] };
 var operatorName = '';
 var loadedTabs = {};
 
@@ -371,21 +394,39 @@ function fillDatalist(id, values) {
   });
 }
 
+function fillOtherWalletsSelect(id, items) {
+  var sel = document.getElementById(id);
+  var prev = sel.value;
+  sel.innerHTML = '';
+  var ph = document.createElement('option');
+  ph.value = ''; ph.textContent = '— Select —';
+  sel.appendChild(ph);
+  items.forEach(function (it) {
+    var opt = document.createElement('option');
+    opt.value = it.wallet + '|||' + it.owner;
+    opt.textContent = it.wallet + ' (' + it.owner + ')';
+    sel.appendChild(opt);
+  });
+  if (prev) sel.value = prev;
+}
+
 function refreshDropdowns() {
-  ['trade-from', 'trade-to', 'trade-feewallet', 'expense-from', 'loan-from', 'repayment-to'].forEach(function (id) {
+  ['trade-from', 'trade-to', 'trade-feewallet', 'expense-from', 'loan-from', 'repayment-to', 'transfer-from'].forEach(function (id) {
     fillSelect(id, refData.wallets, null, true);
   });
   fillSelect('expense-purpose', refData.purposes);
   fillDatalist('clients-datalist', refData.clients);
+  fillOtherWalletsSelect('transfer-to', refData.otherWallets);
 }
 
 function loadRefData() {
   return Promise.all([
     callApi('getWallets'),
     callApi('getPurposes'),
-    callApi('getClients')
+    callApi('getClients'),
+    callApi('getOtherOperatorsWallets')
   ]).then(function (res) {
-    refData.wallets = res[0]; refData.purposes = res[1]; refData.clients = res[2];
+    refData.wallets = res[0]; refData.purposes = res[1]; refData.clients = res[2]; refData.otherWallets = res[3];
     refreshDropdowns();
   }).catch(function (err) { alert('Failed to load reference lists: ' + err.message); });
 }
@@ -520,19 +561,30 @@ function collectPayload() {
       sum: val('repayment-sum'), comment: val('repayment-comment')
     };
   }
+  if (currentTab === 'transfer') {
+    var toRaw = val('transfer-to');
+    var toParts = toRaw ? toRaw.split('|||') : ['', ''];
+    return {
+      type: 'transfer',
+      from: val('transfer-from'), toWallet: toParts[0], toOwner: toParts[1],
+      amount: val('transfer-amount'), comment: val('transfer-comment')
+    };
+  }
 }
 
 var fieldLabels = {
   from: 'From', to: 'To', sum: 'Sum', outgoing: 'Outgoing', incoming: 'Incoming',
   outgoingAmount: 'Outgoing amount', purpose: 'Purpose', client: 'Client',
-  method: 'Method', value: 'Value', feeWallet: 'Fee wallet', comment: 'Comment'
+  method: 'Method', value: 'Value', feeWallet: 'Fee wallet', comment: 'Comment',
+  toWallet: 'To', toOwner: 'Recipient', amount: 'Amount'
 };
 
 var requiredFields = {
   trade: ['outgoing', 'incoming', 'outgoingAmount', 'value', 'feeWallet'],
   expense: ['from', 'purpose', 'sum'],
   loan: ['client', 'from', 'sum'],
-  repayment: ['client', 'to', 'sum']
+  repayment: ['client', 'to', 'sum'],
+  transfer: ['from', 'toWallet', 'amount']
 };
 
 document.getElementById('btnSubmit').addEventListener('click', function () {
@@ -582,7 +634,7 @@ document.getElementById('btnConfirm').addEventListener('click', function () {
   var payload = JSON.parse(document.getElementById('overlay').dataset.payload);
   var btn = document.getElementById('btnConfirm');
   btn.disabled = true; btn.textContent = 'Submitting...';
-  var fnMap = { trade: 'submitTrade', expense: 'submitExpense', loan: 'submitLoan', repayment: 'submitRepayment' };
+  var fnMap = { trade: 'submitTrade', expense: 'submitExpense', loan: 'submitLoan', repayment: 'submitRepayment', transfer: 'submitTransfer' };
   callApi(fnMap[payload.type], payload).then(function () {
     document.getElementById('overlay').classList.remove('show');
     btn.disabled = false; btn.textContent = 'Submit';
@@ -621,8 +673,8 @@ function loadBalances() {
 }
 
 /* ---------- History (all operations) ---------- */
-var typeLabels = { TRADE: 'Trade', EXPENSE: 'Expense', LOAN: 'Loan', REPAYMENT: 'Repay' };
-var typeBadgeClass = { TRADE: 'tb-trade', EXPENSE: 'tb-expense', LOAN: 'tb-loan', REPAYMENT: 'tb-repayment' };
+var typeLabels = { TRADE: 'Trade', EXPENSE: 'Expense', LOAN: 'Loan', REPAYMENT: 'Repay', TRANSFER: 'Transfer' };
+var typeBadgeClass = { TRADE: 'tb-trade', EXPENSE: 'tb-expense', LOAN: 'tb-loan', REPAYMENT: 'tb-repayment', TRANSFER: 'tb-transfer' };
 var allOperations = [];
 
 function loadHistory() {

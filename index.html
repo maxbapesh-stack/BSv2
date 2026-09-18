@@ -256,6 +256,10 @@
       <input type="text" inputmode="decimal" id="transfer-amount" placeholder="1234.56">
     </div>
     <div class="field">
+      <label>Fee (optional, deducted from the same wallet)</label>
+      <input type="text" inputmode="decimal" id="transfer-fee" placeholder="0">
+    </div>
+    <div class="field">
       <label>Comment (optional)</label>
       <input type="text" id="transfer-comment">
     </div>
@@ -567,7 +571,7 @@ function collectPayload() {
     return {
       type: 'transfer',
       from: val('transfer-from'), toWallet: toParts[0], toOwner: toParts[1],
-      amount: val('transfer-amount'), comment: val('transfer-comment')
+      amount: val('transfer-amount'), fee: val('transfer-fee'), comment: val('transfer-comment')
     };
   }
 }
@@ -576,7 +580,7 @@ var fieldLabels = {
   from: 'From', to: 'To', sum: 'Sum', outgoing: 'Outgoing', incoming: 'Incoming',
   outgoingAmount: 'Outgoing amount', purpose: 'Purpose', client: 'Client',
   method: 'Method', value: 'Value', feeWallet: 'Fee wallet', comment: 'Comment',
-  toWallet: 'To', toOwner: 'Recipient', amount: 'Amount'
+  toWallet: 'To', toOwner: 'Recipient', amount: 'Amount', fee: 'Fee'
 };
 
 var requiredFields = {
